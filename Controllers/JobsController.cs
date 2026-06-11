@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using JobFlow.Domain.Entities;
+using JobFlow.Domain.Enums;
 using JobFlow.Infrastructure.Persistence;
 
 namespace JobFlow.API.Controllers;
@@ -35,6 +36,7 @@ public class JobsController : ControllerBase
             Name = request.Name,
             Description = request.Description,
             Status = "Pending",
+            Priority = request.Priority ?? JobPriority.Medium,
             CreatedAt = DateTime.UtcNow,
             UserId = userId
         };
@@ -86,6 +88,7 @@ public class JobsController : ControllerBase
 
         job.Name = request.Name ?? job.Name;
         job.Description = request.Description ?? job.Description;
+        job.Priority = request.Priority ?? job.Priority;
 
         _dbContext.Jobs.Update(job);
         await _dbContext.SaveChangesAsync();
@@ -110,6 +113,6 @@ public class JobsController : ControllerBase
         return NoContent();
     }
 
-    public record CreateJobRequest(string Name, string? Description);
-    public record UpdateJobRequest(string? Name, string? Description);
+    public record CreateJobRequest(string Name, string? Description, JobPriority? Priority);
+    public record UpdateJobRequest(string? Name, string? Description, JobPriority? Priority);
 }
