@@ -142,3 +142,4 @@
 /home/surya-chandra/Desktop/dotner project 1 (cognizant)/JobFlow.API/bin/Debug/net8.0/zh-Hans/Microsoft.CodeAnalysis.Workspaces.resources.dll
 /home/surya-chandra/Desktop/dotner project 1 (cognizant)/JobFlow.API/bin/Debug/net8.0/zh-Hant/Microsoft.CodeAnalysis.Workspaces.resources.dll
 /home/surya-chandra/Desktop/dotner project 1 (cognizant)/JobFlow.API/bin/Debug/net8.0/Microsoft.AspNetCore.Authentication.JwtBearer.dll
+/home/surya-chandra/Desktop/dotner project 1 (cognizant)/JobFlow.API/obj/Debug/net8.0/JobFlow.API.sourcelink.json
