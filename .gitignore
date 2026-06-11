@@ -1,0 +1,23 @@
+## Build outputs
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+## IDE
+.vs/
+.vscode/
+*.suo
+*.sln.docstates
+*.user
+*.userosscache
+
+## Dependencies
+packages/
+.nuget/
+
+## Temp
+*.swp
+*.swo
+*~

@@ -1,0 +1,30 @@
+using Microsoft.EntityFrameworkCore;
+using JobFlow.Domain.Entities;
+
+namespace JobFlow.Infrastructure.Persistence;
+
+public class ApplicationDbContext : DbContext
+{
+    public ApplicationDbContext(DbContextOptions options)
+        : base(options)
+    {
+    }
+
+    public DbSet<User> Users { get; set; } = null!;
+    public DbSet<Job> Jobs { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<Job>(b =>
+        {
+            b.HasKey(j => j.Id);
+            b.Property(j => j.Name).IsRequired();
+            b.HasOne<User>()
+                .WithMany(u => u.Jobs)
+                .HasForeignKey(j => j.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+}
