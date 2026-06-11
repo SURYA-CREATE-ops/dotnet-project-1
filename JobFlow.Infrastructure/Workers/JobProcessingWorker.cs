@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using JobFlow.Infrastructure.Persistence;
 using JobFlow.Domain.Entities;
+using JobFlow.Domain.Enums;
 
 namespace JobFlow.Infrastructure.Workers;
 
@@ -35,24 +36,54 @@ public class JobProcessingWorker : BackgroundService
 
                 var job = await db.Jobs
                     .Where(j => j.Status == "Pending")
-                    .OrderBy(j => j.CreatedAt)
+                    .OrderByDescending(j => j.Priority)
+                    .ThenBy(j => j.CreatedAt)
                     .FirstOrDefaultAsync(stoppingToken);
 
                 if (job != null)
                 {
                     _logger.LogInformation("Picked job {JobId} (user {UserId})", job.Id, job.UserId);
+                    _logger.LogInformation("Priority: {Priority}", job.Priority);
 
                     job.Status = "Running";
                     await db.SaveChangesAsync(stoppingToken);
 
                     _logger.LogInformation("Job {JobId} status set to Running", job.Id);
 
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    try
+                    {
+                        if (job.Name.Contains("FAIL", StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new Exception("Simulated job failure");
+                        }
 
-                    job.Status = "Completed";
-                    await db.SaveChangesAsync(stoppingToken);
+                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
-                    _logger.LogInformation("Job {JobId} completed", job.Id);
+                        job.Status = "Completed";
+                        job.ErrorMessage = null;
+                        await db.SaveChangesAsync(stoppingToken);
+
+                        _logger.LogInformation("Job {JobId} completed", job.Id);
+                        _logger.LogInformation("Priority: {Priority}", job.Priority);
+                    }
+                    catch (Exception jobEx)
+                    {
+                        job.RetryCount++;
+                        job.ErrorMessage = jobEx.Message;
+
+                        if (job.RetryCount < job.MaxRetries)
+                        {
+                            job.Status = "Pending";
+                            _logger.LogWarning(jobEx, "Job {JobId} failed and will retry (attempt {RetryCount})", job.Id, job.RetryCount);
+                        }
+                        else
+                        {
+                            job.Status = "Failed";
+                            _logger.LogError(jobEx, "Job {JobId} failed after {RetryCount} attempts and is marked Failed", job.Id, job.RetryCount);
+                        }
+
+                        await db.SaveChangesAsync(stoppingToken);
+                    }
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
