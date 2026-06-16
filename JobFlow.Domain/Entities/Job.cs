@@ -15,7 +15,11 @@ public class Job
 
     public string Status { get; set; } = "Pending";
 
+    public JobType Type { get; set; } = JobType.Report;
+
     public JobPriority Priority { get; set; } = JobPriority.Medium;
+
+    public DateTime ScheduledAt { get; set; } = DateTime.UtcNow;
 
     public int RetryCount { get; set; }
 
@@ -26,4 +30,6 @@ public class Job
     public DateTime CreatedAt { get; set; }
 
     public Guid UserId { get; set; }
+
+    public ICollection<JobExecutionLog> Logs { get; set; } = new List<JobExecutionLog>();
 }

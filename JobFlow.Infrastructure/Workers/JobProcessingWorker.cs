@@ -27,6 +27,8 @@ public class JobProcessingWorker : BackgroundService
     {
         _logger.LogInformation("JobProcessingWorker started.");
 
+        await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -34,28 +36,33 @@ public class JobProcessingWorker : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+                if (!await db.Database.CanConnectAsync(stoppingToken))
+                {
+                    _logger.LogWarning("Database connection unavailable, will retry in 10 seconds");
+                    await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+                    continue;
+                }
+
+                var currentUtc = DateTime.UtcNow;
                 var job = await db.Jobs
-                    .Where(j => j.Status == "Pending")
+                    .Where(j => j.Status == "Pending" && j.ScheduledAt <= currentUtc)
                     .OrderByDescending(j => j.Priority)
                     .ThenBy(j => j.CreatedAt)
                     .FirstOrDefaultAsync(stoppingToken);
 
                 if (job != null)
                 {
-                    _logger.LogInformation("Picked job {JobId} (user {UserId})", job.Id, job.UserId);
-                    _logger.LogInformation("Priority: {Priority}", job.Priority);
+                    _logger.LogInformation("Picked job {JobId} (Priority: {Priority})", job.Id, job.Priority);
 
                     job.Status = "Running";
                     await db.SaveChangesAsync(stoppingToken);
 
-                    _logger.LogInformation("Job {JobId} status set to Running", job.Id);
+                    await AddLog(db, job.Id, "Worker started processing.", stoppingToken);
 
                     try
                     {
                         if (job.Name.Contains("FAIL", StringComparison.OrdinalIgnoreCase))
-                        {
                             throw new Exception("Simulated job failure");
-                        }
 
                         await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
@@ -63,8 +70,8 @@ public class JobProcessingWorker : BackgroundService
                         job.ErrorMessage = null;
                         await db.SaveChangesAsync(stoppingToken);
 
+                        await AddLog(db, job.Id, "Job completed successfully.", stoppingToken);
                         _logger.LogInformation("Job {JobId} completed", job.Id);
-                        _logger.LogInformation("Priority: {Priority}", job.Priority);
                     }
                     catch (Exception jobEx)
                     {
@@ -74,15 +81,21 @@ public class JobProcessingWorker : BackgroundService
                         if (job.RetryCount < job.MaxRetries)
                         {
                             job.Status = "Pending";
-                            _logger.LogWarning(jobEx, "Job {JobId} failed and will retry (attempt {RetryCount})", job.Id, job.RetryCount);
+                            await db.SaveChangesAsync(stoppingToken);
+                            await AddLog(db, job.Id,
+                                $"Retry attempt {job.RetryCount} of {job.MaxRetries}. Error: {jobEx.Message}",
+                                stoppingToken);
+                            _logger.LogWarning(jobEx, "Job {JobId} will retry (attempt {RetryCount})", job.Id, job.RetryCount);
                         }
                         else
                         {
                             job.Status = "Failed";
-                            _logger.LogError(jobEx, "Job {JobId} failed after {RetryCount} attempts and is marked Failed", job.Id, job.RetryCount);
+                            await db.SaveChangesAsync(stoppingToken);
+                            await AddLog(db, job.Id,
+                                $"Job failed after {job.RetryCount} attempt(s). Error: {jobEx.Message}",
+                                stoppingToken);
+                            _logger.LogError(jobEx, "Job {JobId} failed after {RetryCount} attempts", job.Id, job.RetryCount);
                         }
-
-                        await db.SaveChangesAsync(stoppingToken);
                     }
                 }
             }
@@ -97,5 +110,17 @@ public class JobProcessingWorker : BackgroundService
 
             await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
         }
+    }
+
+    private static async Task AddLog(ApplicationDbContext db, Guid jobId, string message, CancellationToken ct)
+    {
+        db.JobExecutionLogs.Add(new JobExecutionLog
+        {
+            Id = Guid.NewGuid(),
+            JobId = jobId,
+            Message = message,
+            CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
     }
 }

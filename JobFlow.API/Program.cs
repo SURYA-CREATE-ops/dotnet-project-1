@@ -69,23 +69,59 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+// Add CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.SetIsOriginAllowed(origin =>
+            new Uri(origin).Host == "localhost")
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
 // Register background worker to process pending jobs
 builder.Services.AddHostedService<JobProcessingWorker>();
 
 // Add DbContext
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// Initialize database with robust error handling
+try
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        try
+        {
+            db.Database.EnsureCreated();
+            logger.LogInformation("Database initialized successfully");
+        }
+        catch (Exception dbEx)
+        {
+            logger.LogError(dbEx, "Database initialization failed, but server will continue");
+            // Don't rethrow - allow server to start even if DB init fails
+        }
+    }
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "Critical error during startup, but continuing server startup");
 }
 
-app.UseHttpsRedirection();
+// Configure the HTTP request pipeline.
+app.UseSwagger();
+app.UseSwaggerUI();
+
+app.UseCors("AllowFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
